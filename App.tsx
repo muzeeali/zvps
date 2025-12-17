@@ -33,11 +33,46 @@ const App: React.FC = () => {
   });
 
   const [advice, setAdvice] = useState<string>("Wabby Wabbo! Pick a difficulty!");
+  const [scale, setScale] = useState(1);
   
   const requestRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const zombieSpawnTimer = useRef<number>(0);
   const sunSpawnTimer = useRef<number>(0);
+
+  // Synchronization refs for the high-performance game loop
+  const isGameOverRef = useRef(false);
+  const isPausedRef = useRef(false);
+  const difficultyRef = useRef<Difficulty | null>(null);
+  const waveRef = useRef(1);
+
+  useEffect(() => {
+    isGameOverRef.current = gameState.isGameOver;
+    isPausedRef.current = gameState.isPaused;
+    difficultyRef.current = gameState.difficulty;
+    waveRef.current = gameState.wave;
+  }, [gameState.isGameOver, gameState.isPaused, gameState.difficulty, gameState.wave]);
+
+  // Responsive Board Scaling Logic
+  useEffect(() => {
+    const handleResize = () => {
+      const horizontalPadding = 40;
+      const verticalPadding = 160;
+      const availableWidth = window.innerWidth - horizontalPadding;
+      const availableHeight = window.innerHeight - verticalPadding;
+      const boardWidth = LAWN_WIDTH;
+      const boardHeight = GRID_ROWS * CELL_HEIGHT;
+      
+      const widthScale = availableWidth / boardWidth;
+      const heightScale = availableHeight / boardHeight;
+      const newScale = Math.min(1, widthScale, heightScale);
+      setScale(newScale);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const fetchAdvice = async () => {
     const tip = await getTacticalAdvice(gameState);
@@ -45,34 +80,33 @@ const App: React.FC = () => {
   };
 
   const spawnZombie = useCallback(() => {
-    if (!gameState.difficulty) return;
+    if (!difficultyRef.current) return;
     
     const row = Math.floor(Math.random() * GRID_ROWS);
     const id = Math.random().toString(36).substr(2, 9);
     
-    // 10% speed increase per wave
-    const waveSpeedMultiplier = Math.pow(1.10, gameState.wave - 1);
-    const baseSpeed = GET_BASE_ZOMBIE_SPEED(gameState.difficulty);
+    const waveSpeedMultiplier = Math.pow(1.10, waveRef.current - 1);
+    const baseSpeed = GET_BASE_ZOMBIE_SPEED(difficultyRef.current);
     let speed = baseSpeed * waveSpeedMultiplier * (0.95 + Math.random() * 0.1);
 
-    let hp = 100 + (gameState.wave * 25);
+    let hp = 100 + (waveRef.current * 25);
     let type = ZombieType.NORMAL;
 
     const roll = Math.random();
-    if (gameState.wave >= 15 && roll > 0.9) {
+    if (waveRef.current >= 15 && roll > 0.9) {
       type = ZombieType.GARGANTUAR;
       hp *= 15;
       speed *= 0.6;
-    } else if (gameState.wave >= 10 && roll > 0.8) {
+    } else if (waveRef.current >= 10 && roll > 0.8) {
       type = ZombieType.WIZARD;
       hp *= 1.5;
-    } else if (gameState.wave >= 5 && roll > 0.65) {
+    } else if (waveRef.current >= 5 && roll > 0.65) {
       type = ZombieType.POLE_VAULTER;
       speed *= 2.0; 
-    } else if (gameState.wave > 6 && roll > 0.5) {
+    } else if (waveRef.current > 6 && roll > 0.5) {
       type = ZombieType.BUCKETHEAD;
       hp *= 4;
-    } else if (gameState.wave > 3 && roll > 0.3) {
+    } else if (waveRef.current > 3 && roll > 0.3) {
       type = ZombieType.CONEHEAD;
       hp *= 2.5;
     }
@@ -85,12 +119,12 @@ const App: React.FC = () => {
       hp,
       maxHp: hp,
       type,
-      speed, // speed is now px/sec
+      speed,
       hasJumped: false,
       lastAbilityUse: Date.now()
     };
     setGameState(prev => ({ ...prev, zombies: [...prev.zombies, newZombie] }));
-  }, [gameState.difficulty, gameState.wave]);
+  }, []);
 
   const spawnSun = useCallback(() => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -156,11 +190,14 @@ const App: React.FC = () => {
   };
 
   const update = useCallback((time: number) => {
-    if (gameState.isGameOver || gameState.isPaused || !gameState.difficulty) return;
+    if (isGameOverRef.current || isPausedRef.current || !difficultyRef.current) {
+        requestRef.current = requestAnimationFrame(update);
+        return;
+    }
 
     const deltaTime = time - (lastTimeRef.current || time);
     lastTimeRef.current = time;
-    const dtSeconds = deltaTime / 1000;
+    const dtSeconds = Math.min(deltaTime / 1000, 0.1);
 
     setGameState(prev => {
       const now = Date.now();
@@ -174,7 +211,7 @@ const App: React.FC = () => {
           if (triggers) isActive = true;
         }
         if (isActive) {
-          x += (1500 * dtSeconds); // Mowers move very fast
+          x += (1500 * dtSeconds); 
           if (x > LAWN_WIDTH + 100) {
             isActive = false;
             isSpent = true;
@@ -205,12 +242,10 @@ const App: React.FC = () => {
           p.type !== PlantType.SPIKEWEED
         );
 
-        // Pole Vaulter Logic - Jumps 120 pixels
         if (z.type === ZombieType.POLE_VAULTER && collidingPlant && !z.hasJumped) {
           return { ...z, x: z.x - 120, hasJumped: true, speed: z.speed / 2.0 };
         }
 
-        // Wizard Logic - Casts spell every 5 seconds
         if (z.type === ZombieType.WIZARD && now - (z.lastAbilityUse || 0) > 5000) {
           const targetPlant = prev.plants.find(p => p.row === z.row && p.x < z.x && p.x > z.x - 300 && p.state !== 'disabled');
           if (targetPlant) {
@@ -239,7 +274,6 @@ const App: React.FC = () => {
 
         let newHp = p.hp;
         if (eatingZombie) {
-          // Zombies deal 100 DPS to plants usually
           const baseDPS = eatingZombie.type === ZombieType.GARGANTUAR ? 1000 : 100;
           newHp -= (baseDPS * dtSeconds);
         }
@@ -337,7 +371,6 @@ const App: React.FC = () => {
         return { ...p, hp: newHp };
       }).filter(p => p.hp > 0);
 
-      // Instant Explosions
       prev.plants.forEach(p => {
           if (p.type === PlantType.POTATO_MINE && p.isArmed) {
               const victim = nextZombies.find(z => z.row === p.row && Math.abs(z.x - p.x) < 40);
@@ -356,7 +389,7 @@ const App: React.FC = () => {
             nextZombies.forEach(z => {
                 if (Math.abs(z.row - p.row) <= 2 && Math.abs(z.x - p.x) < 350) z.hp -= 5000;
             });
-        }
+          }
       });
 
       const nextProjectiles = newProjectiles.map(pr => {
@@ -387,7 +420,7 @@ const App: React.FC = () => {
               if (pr.isPiercing) {
                   pr.hitIds?.push(hitZombie.id);
               } else {
-                  pr.x = 9999; // Effectively remove
+                  pr.x = 9999; 
               }
               if (hitZombie.hp <= 0) scoreGain += 100;
           }
@@ -400,6 +433,19 @@ const App: React.FC = () => {
         const rowMower = nextMowers[z.row];
         return z.x < -60 && rowMower.isSpent;
       });
+
+      zombieSpawnTimer.current += deltaTime;
+      const spawnRate = prev.difficulty === Difficulty.HARD ? 3500 : prev.difficulty === Difficulty.MEDIUM ? 5000 : 7000;
+      if (zombieSpawnTimer.current > (spawnRate / (1 + prev.wave * 0.35))) {
+        spawnZombie();
+        zombieSpawnTimer.current = 0;
+      }
+
+      sunSpawnTimer.current += deltaTime;
+      if (sunSpawnTimer.current > 4000) {
+        spawnSun();
+        sunSpawnTimer.current = 0;
+      }
 
       return {
         ...prev,
@@ -414,21 +460,8 @@ const App: React.FC = () => {
       };
     });
 
-    zombieSpawnTimer.current += deltaTime;
-    const spawnRate = gameState.difficulty === Difficulty.HARD ? 3500 : gameState.difficulty === Difficulty.MEDIUM ? 5000 : 7000;
-    if (zombieSpawnTimer.current > (spawnRate / (1 + gameState.wave * 0.35))) {
-      spawnZombie();
-      zombieSpawnTimer.current = 0;
-    }
-
-    sunSpawnTimer.current += deltaTime;
-    if (sunSpawnTimer.current > 4000) {
-      spawnSun();
-      sunSpawnTimer.current = 0;
-    }
-
     requestRef.current = requestAnimationFrame(update);
-  }, [gameState.isGameOver, gameState.isPaused, gameState.wave, gameState.difficulty, spawnZombie, spawnSun]);
+  }, [spawnZombie, spawnSun]);
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(update);
@@ -453,8 +486,13 @@ const App: React.FC = () => {
   return (
     <div className="relative w-screen h-screen flex items-center justify-center bg-stone-900 overflow-hidden select-none">
       <div 
-        className="relative bg-green-800 border-8 border-amber-900 shadow-2xl overflow-hidden"
-        style={{ width: LAWN_WIDTH, height: GRID_ROWS * CELL_HEIGHT }}
+        className="relative bg-green-800 border-8 border-amber-900 shadow-2xl overflow-hidden transition-transform"
+        style={{ 
+          width: LAWN_WIDTH, 
+          height: GRID_ROWS * CELL_HEIGHT,
+          transform: `scale(${scale})`,
+          transformOrigin: 'center center'
+        }}
       >
         <div className="absolute inset-0 grid grid-cols-9 grid-rows-5 pointer-events-none">
           {Array.from({ length: GRID_ROWS * GRID_COLS }).map((_, i) => {
@@ -539,40 +577,40 @@ const App: React.FC = () => {
       />
 
       {!gameState.difficulty && (
-        <div className="absolute inset-0 bg-black/80 z-[110] flex flex-col items-center justify-center p-10">
-          <div className="bg-stone-800 border-8 border-amber-900 p-12 rounded-3xl shadow-2xl flex flex-col items-center max-w-2xl text-center">
-            <h1 className="text-6xl font-game text-white mb-4 drop-shadow-lg">FLORA vs PHANTOMS</h1>
-            <p className="text-xl text-amber-200 font-bold mb-12 uppercase tracking-widest">Select Your Challenge</p>
-            <div className="flex flex-col gap-6 w-full max-w-md">
-              <button onClick={() => selectDifficulty(Difficulty.EASY)} className="bg-green-600 hover:bg-green-500 text-white p-6 rounded-2xl font-game text-2xl border-b-8 border-green-800 flex justify-between items-center group transition-all active:translate-y-1 active:border-b-4">
+        <div className="absolute inset-0 bg-black/80 z-[110] flex flex-col items-center justify-center p-4">
+          <div className="bg-stone-800 border-8 border-amber-900 p-6 sm:p-12 rounded-3xl shadow-2xl flex flex-col items-center max-w-2xl text-center w-full">
+            <h1 className="text-3xl sm:text-6xl font-game text-white mb-4 drop-shadow-lg">FLORA vs PHANTOMS</h1>
+            <p className="text-sm sm:text-xl text-amber-200 font-bold mb-6 sm:mb-12 uppercase tracking-widest">Select Your Challenge</p>
+            <div className="flex flex-col gap-4 sm:gap-6 w-full max-w-md">
+              <button onClick={() => selectDifficulty(Difficulty.EASY)} className="bg-green-600 hover:bg-green-500 text-white p-4 sm:p-6 rounded-2xl font-game text-lg sm:text-2xl border-b-8 border-green-800 flex justify-between items-center group transition-all active:translate-y-1 active:border-b-4">
                 <span>EASY</span>
-                <span className="text-sm opacity-60 font-sans">60s CROSS TIME</span>
+                <span className="text-[10px] sm:text-sm opacity-60 font-sans">60s CROSS</span>
               </button>
-              <button onClick={() => selectDifficulty(Difficulty.MEDIUM)} className="bg-yellow-600 hover:bg-yellow-500 text-white p-6 rounded-2xl font-game text-2xl border-b-8 border-yellow-800 flex justify-between items-center group transition-all active:translate-y-1 active:border-b-4">
+              <button onClick={() => selectDifficulty(Difficulty.MEDIUM)} className="bg-yellow-600 hover:bg-yellow-500 text-white p-4 sm:p-6 rounded-2xl font-game text-lg sm:text-2xl border-b-8 border-yellow-800 flex justify-between items-center group transition-all active:translate-y-1 active:border-b-4">
                 <span>MEDIUM</span>
-                <span className="text-sm opacity-60 font-sans">45s CROSS TIME</span>
+                <span className="text-[10px] sm:text-sm opacity-60 font-sans">45s CROSS</span>
               </button>
-              <button onClick={() => selectDifficulty(Difficulty.HARD)} className="bg-red-600 hover:bg-red-500 text-white p-6 rounded-2xl font-game text-2xl border-b-8 border-red-800 flex justify-between items-center group transition-all active:translate-y-1 active:border-b-4">
+              <button onClick={() => selectDifficulty(Difficulty.HARD)} className="bg-red-600 hover:bg-red-500 text-white p-4 sm:p-6 rounded-2xl font-game text-lg sm:text-2xl border-b-8 border-red-800 flex justify-between items-center group transition-all active:translate-y-1 active:border-b-4">
                 <span>HARD</span>
-                <span className="text-sm opacity-60 font-sans">30s CROSS TIME</span>
+                <span className="text-[10px] sm:text-sm opacity-60 font-sans">30s CROSS</span>
               </button>
             </div>
-            <p className="mt-8 text-stone-400 italic text-sm">Zombies get 10% faster every wave!</p>
+            <p className="mt-4 sm:mt-8 text-stone-400 italic text-[10px] sm:text-sm">Zombies get 10% faster every wave!</p>
           </div>
         </div>
       )}
 
       {gameState.isGameOver && (
-        <div className="absolute inset-0 bg-black/95 z-[120] flex flex-col items-center justify-center text-white text-center p-10">
-          <h1 className="text-7xl font-game text-red-600 mb-6 animate-pulse uppercase tracking-tighter">THE ZOMBIES ATE YOUR BRAINS!</h1>
-          <p className="text-2xl mb-10 font-game opacity-80">Score: {gameState.score} | Waves: {gameState.wave}</p>
-          <button onClick={() => window.location.reload()} className="bg-green-600 hover:bg-green-500 text-white px-12 py-4 rounded-xl font-game text-3xl border-b-8 border-green-900 active:border-b-0 active:translate-y-2 transition-all">TRY AGAIN</button>
+        <div className="absolute inset-0 bg-black/95 z-[120] flex flex-col items-center justify-center text-white text-center p-6">
+          <h1 className="text-4xl sm:text-7xl font-game text-red-600 mb-6 animate-pulse uppercase tracking-tighter">THE ZOMBIES ATE YOUR BRAINS!</h1>
+          <p className="text-lg sm:text-2xl mb-10 font-game opacity-80">Score: {gameState.score} | Waves: {gameState.wave}</p>
+          <button onClick={() => window.location.reload()} className="bg-green-600 hover:bg-green-500 text-white px-8 py-3 sm:px-12 sm:py-4 rounded-xl font-game text-xl sm:text-3xl border-b-8 border-green-900 active:border-b-0 active:translate-y-2 transition-all">TRY AGAIN</button>
         </div>
       )}
 
       {gameState.wave % 5 === 0 && gameState.difficulty && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none animate-ping">
-              <span className="font-game text-6xl text-red-500 drop-shadow-lg text-center">A HUGE WAVE IS APPROACHING!</span>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none animate-ping text-center w-full px-4">
+              <span className="font-game text-2xl sm:text-6xl text-red-500 drop-shadow-lg">A HUGE WAVE IS APPROACHING!</span>
           </div>
       )}
     </div>
