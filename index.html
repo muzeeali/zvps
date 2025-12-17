@@ -5,8 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flora vs. Phantoms</title>
+    <!-- Tailwind JIT CDN for rapid styling without a build step -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Babel Standalone: Allows running .tsx files directly in the browser on static hosts like GitHub Pages -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -30,23 +35,59 @@
             align-items: center;
             justify-content: center;
         }
+        .loader-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+        .loader-text {
+            color: #fbbf24;
+            font-family: 'Bungee', cursive;
+            font-size: 1.5rem;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
     </style>
-<script type="importmap">
+
+    <script type="text/javascript">
+        // Shim for process.env to prevent crashes on static hosting environments
+        window.process = {
+            env: {
+                API_KEY: "" // The environment will inject the real key if available
+            }
+        };
+    </script>
+
+    <script type="importmap">
 {
   "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.1",
-    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.1/client",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@1.31.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
 </head>
 <body>
-    <div id="root"></div>
-    <!-- The entry point must be explicitly loaded in index.html for static environments -->
-    <script type="module" src="index.tsx"></script>
+    <div id="root">
+        <div class="loader-container">
+            <div class="loader-text">Wabby Wabbo... Loading...</div>
+            <div class="text-stone-500 text-xs uppercase tracking-widest">Transpiling Phantoms...</div>
+        </div>
+    </div>
+    
+    <!-- 
+      We use type="text/babel" so the browser doesn't try to execute the .tsx file natively.
+      Babel will fetch, transpile, and then execute the code.
+      data-type="module" tells Babel to treat the file as an ES module.
+    -->
+    <script type="text/babel" data-presets="react,typescript" data-type="module" src="index.tsx"></script>
 </body>
 </html>

@@ -3,13 +3,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   PlantType, ZombieType, GameState, PlantEntity, ZombieEntity, 
   Projectile, PlantStats, MowerState, Difficulty 
-} from './types';
+} from './types.ts';
 import { 
   GRID_ROWS, GRID_COLS, CELL_WIDTH, CELL_HEIGHT, 
   PLANT_DATA, PEA_SPEED_PX_PER_SEC, INITIAL_SUN, GET_BASE_ZOMBIE_SPEED, LAWN_WIDTH
-} from './constants';
-import { GameUI } from './components/GameUI';
-import { getTacticalAdvice } from './geminiService';
+} from './constants.ts';
+import { GameUI } from './components/GameUI.tsx';
+import { getTacticalAdvice } from './geminiService.ts';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>({
@@ -34,17 +34,21 @@ const App: React.FC = () => {
 
   const [advice, setAdvice] = useState<string>("Wabby Wabbo! Pick a difficulty!");
   const [scale, setScale] = useState(1);
+  const [isMounted, setIsMounted] = useState(false);
   
   const requestRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const zombieSpawnTimer = useRef<number>(0);
   const sunSpawnTimer = useRef<number>(0);
 
-  // Synchronization refs for the high-performance game loop
   const isGameOverRef = useRef(false);
   const isPausedRef = useRef(false);
   const difficultyRef = useRef<Difficulty | null>(null);
   const waveRef = useRef(1);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     isGameOverRef.current = gameState.isGameOver;
@@ -53,7 +57,6 @@ const App: React.FC = () => {
     waveRef.current = gameState.wave;
   }, [gameState.isGameOver, gameState.isPaused, gameState.difficulty, gameState.wave]);
 
-  // Responsive Board Scaling Logic
   useEffect(() => {
     const handleResize = () => {
       const horizontalPadding = 40;
@@ -482,6 +485,8 @@ const App: React.FC = () => {
     setGameState(prev => ({ ...prev, difficulty: diff }));
     setAdvice(diff === Difficulty.HARD ? "Wabby Wabbo! Watch out, they move fast!" : "Let's plant some stuff!");
   };
+
+  if (!isMounted) return null;
 
   return (
     <div className="relative w-screen h-screen flex items-center justify-center bg-stone-900 overflow-hidden select-none">
