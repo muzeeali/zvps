@@ -7,6 +7,7 @@
     <title>Flora vs. Phantoms</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Babel Standalone to handle TSX transpilation in the browser, bypassing MIME type errors -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -32,24 +33,11 @@
             align-items: center;
             justify-content: center;
         }
-        .loader-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 1.5rem;
-        }
         .loader-text {
             color: #fbbf24;
             font-family: 'Bungee', cursive;
             font-size: 2rem;
-            text-shadow: 0 4px 0 #92400e;
             animation: pulse 1.5s infinite;
-        }
-        .loader-subtext {
-            color: #78716c;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.2em;
         }
         @keyframes pulse {
             0%, 100% { transform: scale(1); opacity: 1; }
@@ -76,42 +64,10 @@
 </head>
 <body>
     <div id="root">
-        <div class="loader-container">
-            <div class="loader-text">Wabby Wabbo!</div>
-            <div class="loader-subtext">Preparing your garden...</div>
-        </div>
+        <div class="loader-text">Wabby Wabbo... Loading...</div>
     </div>
     
-    <script type="module">
-        // This custom loader fetches the TSX file as text to bypass strict MIME checking on GitHub Pages
-        async function start() {
-            try {
-                const response = await fetch('./index.tsx');
-                if (!response.ok) throw new Error('Failed to load index.tsx');
-                const code = await response.text();
-                
-                // Transpile using Babel Standalone
-                const transpiled = Babel.transform(code, {
-                    presets: ['react', ['typescript', { isTSX: true, allExtensions: true }]],
-                    filename: 'index.tsx'
-                }).code;
-
-                // Create a blob and run it as a module
-                const blob = new Blob([transpiled], { type: 'application/javascript' });
-                const url = URL.createObjectURL(blob);
-                const module = await import(url);
-            } catch (err) {
-                console.error('Loader Error:', err);
-                document.getElementById('root').innerHTML = `
-                    <div class="text-red-500 font-game text-center p-10">
-                        <div class="text-4xl mb-4">CRITICAL ERROR!</div>
-                        <div>${err.message}</div>
-                        <div class="mt-4 text-sm opacity-50">Please check the console for details.</div>
-                    </div>
-                `;
-            }
-        }
-        start();
-    </script>
+    <!-- Babel handles fetching and transpiling index.tsx and its imports -->
+    <script type="text/babel" data-presets="react,typescript" data-type="module" src="index.tsx"></script>
 </body>
 </html>
