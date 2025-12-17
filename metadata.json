@@ -1,0 +1,5 @@
+{
+  "name": "Flora vs. Phantoms",
+  "description": "A fully functional grid-based tower defense game inspired by Plants vs. Zombies, featuring resource management, multiple plant types, zombie waves, and an AI-powered battle strategist.",
+  "requestFramePermissions": []
+}
