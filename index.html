@@ -5,11 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flora vs. Phantoms</title>
-    <!-- Tailwind JIT CDN for rapid styling without a build step -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;700&display=swap" rel="stylesheet">
-    
-    <!-- Babel Standalone: Allows running .tsx files directly in the browser on static hosts like GitHub Pages -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
@@ -39,27 +36,29 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 1rem;
+            gap: 1.5rem;
         }
         .loader-text {
             color: #fbbf24;
             font-family: 'Bungee', cursive;
-            font-size: 1.5rem;
-            animation: pulse 2s infinite;
+            font-size: 2rem;
+            text-shadow: 0 4px 0 #92400e;
+            animation: pulse 1.5s infinite;
+        }
+        .loader-subtext {
+            color: #78716c;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
         }
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
         }
     </style>
 
     <script type="text/javascript">
-        // Shim for process.env to prevent crashes on static hosting environments
-        window.process = {
-            env: {
-                API_KEY: "" // The environment will inject the real key if available
-            }
-        };
+        window.process = { env: { API_KEY: "" } };
     </script>
 
     <script type="importmap">
@@ -78,16 +77,41 @@
 <body>
     <div id="root">
         <div class="loader-container">
-            <div class="loader-text">Wabby Wabbo... Loading...</div>
-            <div class="text-stone-500 text-xs uppercase tracking-widest">Transpiling Phantoms...</div>
+            <div class="loader-text">Wabby Wabbo!</div>
+            <div class="loader-subtext">Preparing your garden...</div>
         </div>
     </div>
     
-    <!-- 
-      We use type="text/babel" so the browser doesn't try to execute the .tsx file natively.
-      Babel will fetch, transpile, and then execute the code.
-      data-type="module" tells Babel to treat the file as an ES module.
-    -->
-    <script type="text/babel" data-presets="react,typescript" data-type="module" src="index.tsx"></script>
+    <script type="module">
+        // This custom loader fetches the TSX file as text to bypass strict MIME checking on GitHub Pages
+        async function start() {
+            try {
+                const response = await fetch('./index.tsx');
+                if (!response.ok) throw new Error('Failed to load index.tsx');
+                const code = await response.text();
+                
+                // Transpile using Babel Standalone
+                const transpiled = Babel.transform(code, {
+                    presets: ['react', ['typescript', { isTSX: true, allExtensions: true }]],
+                    filename: 'index.tsx'
+                }).code;
+
+                // Create a blob and run it as a module
+                const blob = new Blob([transpiled], { type: 'application/javascript' });
+                const url = URL.createObjectURL(blob);
+                const module = await import(url);
+            } catch (err) {
+                console.error('Loader Error:', err);
+                document.getElementById('root').innerHTML = `
+                    <div class="text-red-500 font-game text-center p-10">
+                        <div class="text-4xl mb-4">CRITICAL ERROR!</div>
+                        <div>${err.message}</div>
+                        <div class="mt-4 text-sm opacity-50">Please check the console for details.</div>
+                    </div>
+                `;
+            }
+        }
+        start();
+    </script>
 </body>
 </html>
